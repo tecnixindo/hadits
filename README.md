@@ -2,7 +2,8 @@
 Cara menggunakan:
 =================
 1. Upload semua file ke hosting (berbayar ataupun gratis juga bisa)
-2. Jalankan file hadits.php File ini bisa anda ubah menjadi index.php jika hendak dijadikan halaman utama
+2. Bisa langsung dijalankan tanpa repot seting2 database dan sebagainya
+3. Desain template masih kosongan, bisa anda ubah sendiri sesuai selera
 
 Donasi:
 =======
