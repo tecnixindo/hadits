@@ -1,5 +1,5 @@
 <?php
-// v2020.08
+// v2022.10
 // (c)2012 Flat File Database System by Muhammad Fauzan Sholihin 		www.tetuku.com		Bitcoin donation: 1LuapJhp6TkBGgjSEE62SFc3TaSDdy4jYK
 // Your donation will keep development process of this web apps. Thanks for your kindness
 // You may use, modify, redistribute my apps for free as long as keep the origin copywrite
@@ -31,8 +31,9 @@ if ($load[0] >= $limit) {
 
 error_reporting(1);
 
-/*
+
 //force to https
+/*
 if ((!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') || $_SERVER['SERVER_PORT'] == 443) {
     $redirect = 'https://' . $_SERVER['HTTP_HOST'] . $_SERVER['REQUEST_URI'];
     header('HTTP/1.1 301 Moved Permanently');
@@ -55,7 +56,7 @@ if ($folder == '') {$folder = "/";}
 if (!preg_match('/localhost|127.0.0.1|192.168.43.206/i',$_SERVER['HTTP_HOST'])) {$folder = "/";}
 $domain = parse_url($protokol.$_SERVER['HTTP_HOST'].$_SERVER['REQUEST_URI']);
 //$folder = "/";		//uncomment jika di root domain
-$abs_url = $protokol.$domain[host].$folder;	//"http://".$domain[host].$domain[path];	// url address with http://yoursitename.com/path/
+$abs_url = $protokol.$domain['host'].$folder;	//"http://".$domain['host'].$domain[path];	// url address with http://yoursitename.com/path/
 
 
 // rewrite purpose
@@ -67,40 +68,41 @@ if (stristr($path[2],'?')) {$path[2] = in_string('','?',$path[2]);}
 if (stristr($path[3],'?')) {$path[3] = in_string('','?',$path[3]);}
 if (stristr($path[4],'?')) {$path[4] = in_string('','?',$path[4]);}
 
-function cek_file($filename) {		// file name
-if (!file_exists($filename)) {return;}
-$file_size = filesize($filename);
-if ($file_size <=0 ) {return;}
-if ($file_size > 5242880) {$file_size = 5242880;}
-$handle = fopen($filename, "r");
-$contents = fread($handle, $file_size);
-fclose($handle);
-return $contents;
-}
-
 function write_file($filename, $string) {	// file name, data
 $db_size = @filesize($filename);
+$data_size = strlen($string); 
+$l_size = $db_size - $data_size;
+$h_size = $db_size + $data_size;
 if ($db_size > 5242880 ) {$string = trim($string); $string = substr($string,0,5242880); } //5242880 / 10485760
 $fixed = str_replace("\n\n\n","\n",$string);
 $fixed = str_replace("\'","'",$string);
 $fixed = str_replace("\\\"","\"",$string);
 $fixed = trim($fixed);
-$fp = @fopen( $filename,"w+"); 
+$new_size = strlen($fixed);
+$fp = @fopen( $filename,"w"); 
 for ($i=0;$i<10;$i++) {
 	if (flock($fp, LOCK_EX | LOCK_NB)) {
 	fseek($fp, 0, SEEK_END);
 	//rewind($fp);
 	//fseek($fp, 0, SEEK_SET);
-	@fwrite( $fp, "\n".$fixed."\n");
+		if ($new_size > $l_size && $new_size < $h_size) {
+			@fwrite( $fp, "\n".$fixed."\n");
+		}
 	break;
 	}
 	usleep(100000);	// 1 second = 1.000.000 micro second
 }
+@fflush($fp);
 @flock($fp, LOCK_UN); 
 @fclose( $fp ); 
 }
 
 function read_file($filename) {		// file name
+if (file_exists($filename.'.tmp')) {
+	unlink($filename); 
+	rename($filename.'.tmp',$filename); 
+	sleep(0.3);
+	}
 if (!file_exists($filename)) {return;}
 $db_size = filesize($filename);
 if ($db_size <=0 ) {return;}
@@ -121,14 +123,16 @@ return $contents;
 function add_db ($filename,$ar_data) { // output as string (optional)
 $data_storage = read_file($filename);
 $data_storage = str_replace("\n\n","\n",$data_storage);
-$countdata = count($ar_data);
-if ($ar_data[0] != '') {$countdata = $countdata - 1; }
+$old_size = strlen($data_storage);
 $key = 1 + in_string('{-}','{,}',$data_storage);
+$countdata = count($ar_data);
+if ($ar_data[0] != '') {$key = $ar_data[0]; $countdata = $countdata - 1; }
 for ($i=1;$i<=$countdata;$i++) {
 $data .= $ar_data[$i].'{,}';
 }
 $data = "\n{-}".$key."{,}".$data."\n".$data_storage;
-write_file($filename,$data);
+$new_size = strlen($data);
+if ($new_size > $old_size) {write_file($filename.'.tmp',$data);}
 return $data;
 }
 
@@ -136,6 +140,7 @@ return $data;
 function edit_db ($filename,$ar_data) { // output as string (optional)
 $data_storage = read_file($filename)."\n";
 $data_storage = str_replace("\n\n","\n",$data_storage);
+$old_size = strlen($data_storage);
 if ($ar_data[0] != '') {$key = preg_replace('/[^0-9]/', '',$ar_data[0]);}
 if ($ar_data[0] == '') {$key = in_string('{-}','{,}',$data_storage);}
 $find_key = in_string('{-}'.$key.'{,}','{-}',$data_storage);
@@ -150,10 +155,12 @@ $data .= $ar_data[$i].'{,}';
 }
 $data .= "\n";
 $data = str_replace('{-}{-}','{-}',$data);
+$data_size = strlen($data);
 //echo $data; die();
 $data_storage = str_replace($find_key,$data,$data_storage);
 $data_storage = str_replace("\n\n","\n",$data_storage);
-write_file($filename,$data_storage);
+$l_size = strlen($data_storage) - strlen($data_size); $h_size =  strlen($data_storage) + strlen($data_size);
+if ($l_size < $old_size && $h_size > $old_size) {write_file($filename.'.tmp',$data_storage);}
 return $data;
 }
 
@@ -161,19 +168,21 @@ return $data;
 function del_db ($filename,$key){
 $key = preg_replace('/[^0-9]/','',$key);
 $data = "{-}".$key."{,}";
+$new_size = strlen($data);
 $data_storage = read_file($filename);
+$old_size = strlen($data_storage);
 $find_key = substr($data_storage, strpos($data_storage, $data));
 $find_key = substr($find_key,0, strpos($find_key, "\n{-}"));
 if ($find_key == '') {$find_key = substr($data_storage, strpos($data_storage, $data));}
 $data_storage = str_replace($find_key,"",$data_storage);
 $data_storage = str_replace("\n\n","\n",$data_storage);
-write_file($filename,$data_storage);
+if ($new_size < $old_size) {write_file($filename.'.tmp',$data_storage);}
 //return $find_key;
 }
 
 // format: file name, first row, last row
 function read_db($filename,$first_row,$last_row) { //output as array data
-if (!stristr($filename,'http://')) {$data_storage = cek_file($filename);}
+if (!stristr($filename,'http://')) {$data_storage = read_file($filename);}
 if (stristr($filename,'http://')) {$data_storage = access_url($filename);}
 $data_storage = str_replace("\n\n","\n",$data_storage);
 $pieces = explode("{-}",$data_storage);
@@ -181,8 +190,7 @@ $pieces = explode("{-}",$data_storage);
 	if (!$pieces[$i]) {break;}
 	$out[] = explode ("{,}",$pieces[$i]);
 	}
-if (count($out) <= 0) {$out = array();}
-return $out;
+return (isset($out) && is_array($out)) ? $out : array();
 }
 
 // format: file name , string keyword
@@ -206,7 +214,7 @@ return $result;
 function key_db ($filename,$key){ // output: row data at specific key
 if ($key == '') {$out = array(); return $out;}
 $data = "{-}".$key."{,}";
-$data_storage = cek_file($filename);
+$data_storage = read_file($filename);
 if (!stristr($data_storage,$data)) {return;}
 $find_key = substr($data_storage, strpos($data_storage, $data));
 $find_key = substr($find_key,0, strpos($find_key, "\n{-}"));
@@ -218,7 +226,7 @@ return $out;
 
 // format: file name , string pattern
 function get_key_db($filename,$pattern) { // output string key
-$data_storage = cek_file($filename);
+$data_storage = read_file($filename);
 if (!stristr($data_storage,$pattern)) {return false;}
 $data_storage = str_replace("\n\n","\n",$data_storage);
 $pieces = explode("{-}",$data_storage);
@@ -233,26 +241,37 @@ return $key;
 }
 
 function replace_db($filename,$ar_data,$pattern) {
+$pattern = trim($pattern);
+if (strlen($pattern) < 1) {return;}
 $data_storage = read_file($filename);
 $data_storage = str_replace("\n\n","\n",$data_storage);
-if (!stristr($data_storage,$pattern)) {$key = "";}
-if (stristr($data_storage,$pattern)) {
-	$cut_storage = in_string('',$pattern,$data_storage);
-	$cut_storage = in_string('',strrev('{-}'),strrev($cut_storage));
-	$key = in_string('','{,}',strrev($cut_storage));
-}
-	if ($key == '') {
+$data_storage = str_replace("\n\n","\n",$data_storage);
+$old_size = strlen($data_storage);
+$last_key = in_string('{-}','{,}',$data_storage);
+	if (!stristr($data_storage,$pattern)) {
+		$key = 1 + is_numeric($last_key);
 		$countdata = count($ar_data);
-		if ($ar_data[0] != '') {$countdata = $countdata - 1; }
-		$key = 1 + in_string('{-}','{,}',$data_storage);
+		if ($ar_data[0] != '') {$key = $ar_data[0]; $countdata = $countdata - 1; }
 		for ($i=1;$i<=$countdata;$i++) {
-		$data .= $ar_data[$i].'{,}';
+			if (!stristr($ar_data[$i],'{-}{,}')){$data .= $ar_data[$i].'{,}';}
+		}
+		if (stristr($data_storage,$pattern)) {return;}
+
+		if (stristr($data,'{-}{,}')){
+			$wrong_data = in_string('{-}{,}','{-}',$data);
+			$data = str_replace('{-}{,}'.$wrong_data,'',$data);
 		}
 		$data = "\n{-}".$key."{,}".$data."\n".$data_storage;
-		write_file($filename,$data);
+		$new_size = strlen($data);
+		if (stristr($data,'{-}{,}')){echo 'error add data'; die();}
+		if (is_numeric($key) && stristr($data,'{-}'.$key.'{,}') && $new_size > $old_size) {write_file($filename.'.tmp',$data);}
 		return $data;
 	}
-	if ($key != '') {
+	if (stristr($data_storage,$pattern)) {
+		$cut_storage = in_string('',$pattern,$data_storage);
+		$cut_storage = in_string('',strrev('{-}'),strrev($cut_storage));
+		$key = in_string('','{,}',strrev($cut_storage));
+
 		$find_key = in_string('{-}'.$key.'{,}','{-}',$data_storage);
 		if ($find_key == '') {$find_key = in_string('{-}'.$key.'{,}','',$data_storage);}
 		if ($find_key == '') {return false;}
@@ -262,14 +281,21 @@ if (stristr($data_storage,$pattern)) {
 		$countdata = count($ar_data);
 		$data = "\n{-}" ;
 		for ($i=0;$i<$countdata;$i++) {
-		$data .= $ar_data[$i].'{,}';
+			if (!stristr($ar_data[$i],'{-}{,}')){$data .= $ar_data[$i].'{,}';}
 		}
 		$data .= "\n";
 		$data = str_replace('{-}{-}','{-}',$data);
+		$data_size = strlen($data);
+		$l_size = strlen($data_storage) - strlen($data_size); $h_size =  strlen($data_storage) + strlen($data_size);
 		//echo $data; die();
 		$data_storage = str_replace($find_key,$data,$data_storage);
 		$data_storage = str_replace("\n\n","\n",$data_storage);
-		write_file($filename,$data_storage);
+		if (stristr($data_storage,'{-}{,}')){
+			$wrong_data = in_string('{-}{,}','{-}',$data_storage);
+			$data_storage = str_replace('{-}{,}'.$wrong_data,'',$data_storage);
+		}
+		if (stristr($data_storage,'{-}{,}')){echo 'error edit data'; die();}
+		if (is_numeric($key) && stristr($data_storage,'{-}'.$key.'{,}') && ($l_size < $old_size && $h_size > $old_size) ) {write_file($filename.'.tmp',$data_storage);}
 		return $data;
 	}
 }
@@ -340,7 +366,7 @@ function array_randsort($array,$preserve_keys=false){
 	endif;
 }
 
-function recursive_data($pattern,$column_parent=1,$row_array_in) { // result = row array out
+function recursive_data($pattern,$row_array_in,$column_parent=1) { // result = row array out
 $pola = '{,}'.$pattern.'{,}';
 $i = 0;
 	foreach ($row_array_in as $column_array_in) {
@@ -368,7 +394,7 @@ function antihack($data) {
 				$data .= '<script language="JavaScript" type="text/javascript">document.write(navigator.appCodeName; document.write("&lt;td&gt;",screen.width + " X " + screen.height + " Pixels" + "&lt;/td&gt;");</script>';
 				$data .= "<br> and other records needed</h3>";
 				}
-				if (preg_match('/\'|"/i',$data)) {$data = str_replace('\'','’',$data); $data = str_replace('"','”',$data);}
+				if (preg_match('/\'|"/i',$data)) {$data = str_replace('\'','ï¿½',$data); $data = str_replace('"','ï¿½',$data);}
 return $data;
 }
 
@@ -433,7 +459,17 @@ function download_file($url_file,$filename='') {
 	return ($saveTo);
 }
 
-function decrypt($ciphertext,$salt=default_salt) { 
+    $default_salt = substr(md5(($_SERVER['HTTP_HOST'])),7,6)."\0";
+function encrypt($plaintext,$salt='default_salt') { 
+	//$key previously generated safely, ie: openssl_random_pseudo_bytes
+	$ivlen = openssl_cipher_iv_length($cipher="AES-128-CBC");
+	$iv = openssl_random_pseudo_bytes($ivlen);
+	$ciphertext_raw = openssl_encrypt($plaintext, $cipher, $key, $options=OPENSSL_RAW_DATA, $iv);
+	$hmac = hash_hmac('sha256', $ciphertext_raw, $key, $as_binary=true);
+	$ciphertext = base64_encode( $iv.$hmac.$ciphertext_raw );
+	return $ciphertext;
+    } 
+function decrypt($ciphertext,$salt='default_salt') { 
 		$c = base64_decode($ciphertext);
 		$ivlen = openssl_cipher_iv_length($cipher="AES-128-CBC");
 		$iv = substr($c, 0, $ivlen);
@@ -550,5 +586,36 @@ function base64_decode_alt($input) {
 	return urldecode($output);
 }
 
+function zip_file($file_name, $folder='./', $exception='file1|file2|file3') {
+	// Get real path for our folder
+	$rootPath = realpath($folder);
 
+	// Initialize archive object
+	$zip = new ZipArchive();
+	$zip->open('hadits.zip', ZipArchive::CREATE | ZipArchive::OVERWRITE);
+
+	// Create recursive directory iterator
+	/** @var SplFileInfo[] $files */
+	$files = new RecursiveIteratorIterator(
+		new RecursiveDirectoryIterator($rootPath),
+		RecursiveIteratorIterator::LEAVES_ONLY
+	);
+
+	foreach ($files as $name => $file)
+	{
+		// Skip directories (they would be added automatically)
+		if (!$file->isDir() && !preg_match('/'.$exception.'/i',$file))
+		{
+			// Get real and relative path for current file
+			$filePath = $file->getRealPath();
+			$relativePath = substr($filePath, strlen($rootPath) + 1);
+
+			// Add current file to archive
+			$zip->addFile($filePath, $relativePath);
+		}
+	}
+
+	// Zip archive will be created only after closing object
+	$zip->close();
+}
 ?>
